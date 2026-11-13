@@ -1,0 +1,3 @@
+- name: tmax_sandbox_agent
+  _target_: tmax_rl.agent_loop.TMaxSandboxAgentLoop
+  max_format_errors: 64

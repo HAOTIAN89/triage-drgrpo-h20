@@ -1,0 +1,30 @@
+tools:
+  - class_name: tmax_rl.sandbox_tool.LocalSandboxBashTool
+    config:
+      type: native
+      task_data_archive: ${oc.env:TMAX_TASK_DATA_ARCHIVE}
+      runtime: auto
+      cache_dir: ~/.cache/tmax-sandboxes
+      cpu: 2
+      memory_gib: 4
+      pids_limit: 4096
+      command_timeout: 120
+      verifier_timeout: 300
+      create_timeout: 1800
+      delete_timeout: 120
+      per_worker_concurrency: 2
+      apptainer_fakeroot: true
+      max_observation_chars: 10000
+    tool_schema:
+      type: function
+      function:
+        name: bash
+        description: Execute one bash action in a persistent isolated sandbox.
+        parameters:
+          type: object
+          properties:
+            command:
+              type: string
+              description: The bash command to execute.
+          required:
+            - command
