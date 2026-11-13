@@ -132,27 +132,3 @@ On 3×H20 with 16 healthy local sandboxes:
 
 Checkpoint steps can add 10–20 minutes. Use the first five full steps to replace
 this estimate with the measured mean and p90.
-
-## Audited behavior
-
-The previous Qwen3-8B thinking-judge pipeline was replayed on 665 segments:
-
-- role mix: about 52% D, 33% E, 6% N, 9% R, where:
-  - **D (Decisive):** completes a required sub-goal or makes a directly
-    verifier-checkable state change;
-  - **E (Exploration):** gathers relevant new information without completing
-    a sub-goal yet;
-  - **N (No-progress):** is harmless but neither changes useful state nor
-    reveals useful information;
-  - **R (Regression):** causes a setback, makes an incorrect change, or
-    redundantly repeats an already completed inspection/test;
-- judge failure fallback: about 0.09% of segments;
-- full-trajectory base-GRPO fallback: 0%;
-- no judge OOM; only a harmless Python RLock warning during server shutdown.
-
-Concurrency 11/32/64 produced similar aggregate role distributions. The default
-here is 32 because it is a safer starting point on a new host.
-
-TRIAGE assigns one role to each environment-facing **turn** (assistant action +
-tool call + observation), not to each shell simple command inside a compound
-bash call.
