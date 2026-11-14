@@ -38,6 +38,7 @@ export VERL_HF_SNAPSHOT_ARCHIVE=${VERL_HF_SNAPSHOT_ARCHIVE:-$OUTPUT_DIR-hf-snaps
 
 TRIAGE_LAMBDA=${TRIAGE_LAMBDA:-0.1}
 TRIAGE_JUDGE_CONCURRENCY=${TRIAGE_JUDGE_CONCURRENCY:-32}
+TRIAGE_INCLUDE_REASONING=${TRIAGE_INCLUDE_REASONING:-true}
 
 test -f "$DATA_DIR/train.parquet"
 test -f "$DATA_DIR/val.parquet"
@@ -64,6 +65,7 @@ exec "$ROOT/tmax_rl/scripts/run_tmax_qwen35_2b.sh" drgrpo \
   +algorithm.triage.judge.fallback_max_input_tokens=26624 \
   +algorithm.triage.judge.previous_steps=5 \
   +algorithm.triage.judge.future_steps=5 \
+  +algorithm.triage.judge.include_reasoning="$TRIAGE_INCLUDE_REASONING" \
   +algorithm.triage.judge.retries=2 \
   +algorithm.triage.judge.max_judge_failure_ratio=0.05 \
   +algorithm.triage.judge.cache_path="$OUTPUT_DIR/triage/judge_cache.jsonl" \

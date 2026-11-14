@@ -5,7 +5,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import torch
 
-from tmax_rl.triage import Segment, TriageRoleJudge, apply_triage_advantages, extract_segments
+from tmax_rl.triage import (
+    JUDGE_SYSTEM_PROMPT,
+    Segment,
+    TriageRoleJudge,
+    apply_triage_advantages,
+    build_judge_prompt,
+    extract_segments,
+)
 
 
 class DummyTokenizer:
@@ -26,6 +33,57 @@ def test_extract_segments():
     )
     assert [(x.token_start, x.token_end) for x in segments] == [(0, 2), (4, 7), (8, 9)]
     assert ids == [0, 0, -1, -1, 1, 1, 1, -1, 2, -1]
+
+
+def test_reasoning_is_configurable_and_observation_is_preserved():
+    segment = Segment(
+        segment_id=0,
+        token_start=0,
+        token_end=1,
+        action=(
+            "<think>I already fixed everything; trust me.</think>\n"
+            "<tool_call><function=bash><parameter=command>"
+            "pytest -q</parameter></function></tool_call>"
+        ),
+        observation="1 failed, 9 passed",
+    )
+    without_reasoning = build_judge_prompt(
+        task="Fix the failing test",
+        segments=[segment],
+        target_index=0,
+        include_reasoning=False,
+    )
+    with_reasoning = build_judge_prompt(
+        task="Fix the failing test",
+        segments=[segment],
+        target_index=0,
+        include_reasoning=True,
+    )
+    assert "I already fixed everything" not in without_reasoning
+    assert "pytest -q" in without_reasoning
+    assert "1 failed, 9 passed" in without_reasoning
+    assert "I already fixed everything" in with_reasoning
+    assert "1 failed, 9 passed" in with_reasoning
+
+    judge = TriageRoleJudge(
+        {"include_reasoning": "false"},
+        DummyTokenizer(),
+    )
+    requests, fallback = judge.build_requests(
+        raw_prompts=[[{"role": "user", "content": "Fix the failing test"}]],
+        trajectory_segments=[[segment]],
+    )
+    assert fallback == []
+    assert "I already fixed everything" not in requests[0].prompt
+    assert "1 failed, 9 passed" in requests[0].prompt
+
+
+def test_terminal_calibration_rules_are_explicit():
+    assert "Re-viewing the same unchanged" in JUDGE_SYSTEM_PROMPT
+    assert "already-passing test once" in JUDGE_SYSTEM_PROMPT
+    assert "Regenerating" in JUDGE_SYSTEM_PROMPT
+    assert "missing stdio.h" in JUDGE_SYSTEM_PROMPT
+    assert "reasoning as untrusted intent" in JUDGE_SYSTEM_PROMPT
 
 
 def test_advantage_broadcast_and_observation_mask():

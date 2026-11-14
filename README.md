@@ -104,11 +104,18 @@ Useful overrides:
 
 ```bash
 TRIAGE_LAMBDA=0.1 \
+TRIAGE_INCLUDE_REASONING=false \
 TMAX_SANDBOX_RUNTIME=podman \
 AGENT_WORKERS=8 \
 TMAX_SANDBOX_CONCURRENCY=2 \
 bash tmax_rl/scripts/launch_h20.sh
 ```
+
+`TRIAGE_INCLUDE_REASONING=true` preserves the complete assistant turn
+(reasoning + tool call) and is the baseline-compatible default. Set it to
+`false` to send only the tool call as `ACTION`. The immediate tool
+`OBSERVATION` is always included for the current turn and every available
+turn in the ±5 local window.
 
 Outputs:
 

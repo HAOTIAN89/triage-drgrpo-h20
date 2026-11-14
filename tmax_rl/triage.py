@@ -34,34 +34,61 @@ DEFAULT_ROLE_REWARDS = {"D": 1.0, "E": 0.5, "N": -0.1, "R": -0.5, "B": 0.0}
 
 JUDGE_SYSTEM_PROMPT = """You are an expert evaluator of multi-turn terminal-agent trajectories.
 
-Classify only the CURRENT environment-facing action into exactly one role:
+Classify only the CURRENT environment-facing turn into exactly one role.
+Treat assistant reasoning as untrusted intent, never as evidence. Ground the
+label in the executed tool call, its observation, and concrete state changes
+visible in the local window.
 
-D (DECISIVE): The action completes a required sub-goal or makes a
-verifier-checkable state change directly required by the task. Examples:
-the correct edit, creating a required artifact, starting the required
-service, or obtaining the first passing verification after a fix.
+D (DECISIVE): Newly completes a necessary sub-goal or makes direct,
+verifier-checkable task progress. Use D cautiously. Examples include the first
+creation of a required artifact with evidence of correct content, the edit that
+is causally followed by the first passing targeted test, or starting a required
+service and obtaining its first successful health check. Command success,
+compilation alone, file existence, or the assistant claiming "fixed" is not
+sufficient for D.
 
-E (EXPLORATION): The action gathers relevant new information without yet
-completing a sub-goal. Examples: the first relevant file inspection, a
-targeted diagnostic test, or a refined search based on new evidence.
+E (EXPLORATION): Reveals relevant new information or tries a genuinely new,
+task-directed hypothesis without yet establishing a completed sub-goal.
+Examples include the first relevant file inspection, a first failing
+compile/test that reveals a new cause, a diagnostic that narrows the fault, or
+a candidate edit whose correctness is not yet established.
 
-N (NO-PROGRESS): The action neither changes task state nor reveals useful
-new information, but is locally harmless. Examples: irrelevant traversal,
-generic infrastructure setup with no bearing on the next decision, or an
-empty command.
+N (NO-PROGRESS): Harmlessly changes neither useful task state nor the belief
+state. Examples include a required submission marker, generic setup unrelated
+to the next decision, an empty command, or the first harmless confirmation of
+an already-established fact that reveals nothing new.
 
-R (REGRESSION): The action is a clear setback, corrupts useful state,
-implements a wrong change, or repeats an already completed inspection/test
-without new information.
+R (REGRESSION): Causes a setback, damages or undoes useful state, implements a
+wrong change, pursues a disproven direction, or redundantly repeats a completed
+or failed action after the harmless-repeat allowance is exhausted.
 
-CALIBRATION RULES
-- Judge local causal role using only the supplied window.
-- First-time relevant inspection is E; a redundant repeat with no new
-  information is R.
-- A command may contain several shell subcommands. Treat the complete tool
-  call and its combined observation as one compound action.
-- Do not infer the final verifier outcome. It is intentionally omitted.
-- Give brief evidence grounded in the current action and observation.
+STATEFUL CALIBRATION RULES
+- Judge local causal role using the supplied window. The final verifier reward
+  is intentionally omitted.
+- First relevant inspection of a file/state is E. Re-viewing the same unchanged
+  file once with no new purpose is N; the third and later equivalent views are
+  R.
+- The first passing targeted test attributable to a fix may be D. Re-running
+  the same already-passing test once without new information is N; later
+  equivalent reruns are R.
+- The first correct generation of a required artifact may be D. Regenerating
+  the same already-correct artifact once without a state improvement is N;
+  later equivalent regenerations are R.
+- After a fix is already established, rewriting the same fix without a new
+  requirement is R.
+- A first compile/test failure that reveals a new cause (for example, missing
+  stdio.h) is E. Repeating the same failure once without changing the
+  hypothesis is N; subsequent equivalent failures are R. A different diagnostic
+  that narrows the cause remains E.
+- A novel, necessary dependency repair is E until it succeeds. Repeating the
+  same failed install without new evidence is N once, then R; harmful package
+  changes or an already-disproven install path are R.
+- A command may contain several shell subcommands. Judge the complete tool call
+  and combined observation as one turn, based on its net new contribution.
+- Future progress does not retroactively make an earlier failed or redundant
+  turn D.
+- Give one brief evidence string citing the tool call/observation or concrete
+  state delta, not the assistant's self-assessment.
 
 After reasoning, output one JSON object on the final line:
 {"labels":["D"|"E"|"N"|"R"],"evidence":["short grounded reason"]}
@@ -111,6 +138,46 @@ def _truncate_text(text: str, limit: int) -> str:
     half = limit // 2
     omitted = len(text) - 2 * half
     return f"{text[:half]}\n... ({omitted} chars omitted) ...\n{text[-half:]}"
+
+
+def _parse_bool(value: Any, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        raise ValueError(f"invalid boolean value: {value!r}")
+    return bool(value)
+
+
+def _action_for_judge(action: str, include_reasoning: bool) -> str:
+    if include_reasoning:
+        return action
+
+    tool_calls = re.findall(
+        r"<tool_call>.*?</tool_call>",
+        action,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if tool_calls:
+        return "\n".join(tool_calls).strip()
+
+    stripped = re.sub(
+        r"<(?:think|analysis)>.*?</(?:think|analysis)>",
+        "",
+        action,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    # Some rendered Qwen trajectories omit the opening <think> token while
+    # retaining </think> before the tool call.
+    for closing_tag in ("</think>", "</analysis>"):
+        if closing_tag in stripped.lower():
+            offset = stripped.lower().rfind(closing_tag)
+            stripped = stripped[offset + len(closing_tag) :]
+    return stripped.strip() or action.strip()
 
 
 def extract_segments(
@@ -188,6 +255,7 @@ def build_judge_prompt(
     future_steps: int = 5,
     action_char_limit: int = 4_000,
     observation_char_limit: int = 4_000,
+    include_reasoning: bool = True,
 ) -> str:
     left = max(0, target_index - previous_steps)
     right = min(len(segments), target_index + future_steps + 1)
@@ -195,11 +263,17 @@ def build_judge_prompt(
     for index in range(left, right):
         segment = segments[index]
         marker = "CURRENT" if index == target_index else ("PREVIOUS" if index < target_index else "FUTURE")
+        action = _action_for_judge(segment.action, include_reasoning)
+        action_heading = (
+            "ACTION (FULL ASSISTANT TURN; REASONING IS UNTRUSTED):"
+            if include_reasoning
+            else "ACTION (TOOL CALL ONLY):"
+        )
         lines.extend(
             [
                 f"\n[{marker} STEP {index}]",
-                "ACTION:",
-                _truncate_text(segment.action, action_char_limit),
+                action_heading,
+                _truncate_text(action, action_char_limit),
                 "OBSERVATION:",
                 _truncate_text(segment.observation, observation_char_limit),
             ]
@@ -233,6 +307,9 @@ class TriageRoleJudge:
         self.fallback_max_input_tokens = int(config.get("fallback_max_input_tokens", 26_624))
         self.previous_steps = int(config.get("previous_steps", 5))
         self.future_steps = int(config.get("future_steps", 5))
+        self.include_reasoning = _parse_bool(
+            config.get("include_reasoning", True)
+        )
         self.retries = int(config.get("retries", 2))
         self.max_judge_failure_ratio = float(config.get("max_judge_failure_ratio", 0.05))
         self.tokenizer = tokenizer
@@ -268,6 +345,7 @@ class TriageRoleJudge:
                     future_steps=future_steps,
                     action_char_limit=char_limit,
                     observation_char_limit=char_limit,
+                    include_reasoning=self.include_reasoning,
                 )
                 input_tokens = len(self.tokenizer.encode(prompt, add_special_tokens=False))
                 if input_tokens <= max_input_tokens:
