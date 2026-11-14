@@ -80,9 +80,9 @@ def test_reasoning_is_configurable_and_observation_is_preserved():
 
 def test_terminal_calibration_rules_are_explicit():
     assert "Re-viewing the same unchanged" in JUDGE_SYSTEM_PROMPT
-    assert "already-passing test once" in JUDGE_SYSTEM_PROMPT
+    assert "already-passing test" in JUDGE_SYSTEM_PROMPT
     assert "Regenerating" in JUDGE_SYSTEM_PROMPT
-    assert "missing stdio.h" in JUDGE_SYSTEM_PROMPT
+    assert "stdio.h" in JUDGE_SYSTEM_PROMPT
     assert "reasoning as untrusted intent" in JUDGE_SYSTEM_PROMPT
 
 

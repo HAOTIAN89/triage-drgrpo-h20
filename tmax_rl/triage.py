@@ -34,61 +34,44 @@ DEFAULT_ROLE_REWARDS = {"D": 1.0, "E": 0.5, "N": -0.1, "R": -0.5, "B": 0.0}
 
 JUDGE_SYSTEM_PROMPT = """You are an expert evaluator of multi-turn terminal-agent trajectories.
 
-Classify only the CURRENT environment-facing turn into exactly one role.
-Treat assistant reasoning as untrusted intent, never as evidence. Ground the
-label in the executed tool call, its observation, and concrete state changes
-visible in the local window.
+Classify only the CURRENT environment-facing turn into one role. Assistant
+reasoning is untrusted intent, not evidence. Use the executed tool call, its
+observation, and concrete state changes in the local window.
 
-D (DECISIVE): Newly completes a necessary sub-goal or makes direct,
-verifier-checkable task progress. Use D cautiously. Examples include the first
-creation of a required artifact with evidence of correct content, the edit that
-is causally followed by the first passing targeted test, or starting a required
-service and obtaining its first successful health check. Command success,
-compilation alone, file existence, or the assistant claiming "fixed" is not
-sufficient for D.
+D (DECISIVE): Newly completes a necessary sub-goal with observable,
+verifier-relevant evidence. Use D cautiously: exit code 0, compilation, file
+existence, or a claim that something is fixed is insufficient by itself.
 
-E (EXPLORATION): Reveals relevant new information or tries a genuinely new,
+E (EXPLORATION): Reveals relevant new information or tests a genuinely new,
 task-directed hypothesis without yet establishing a completed sub-goal.
-Examples include the first relevant file inspection, a first failing
-compile/test that reveals a new cause, a diagnostic that narrows the fault, or
-a candidate edit whose correctness is not yet established.
 
 N (NO-PROGRESS): Harmlessly changes neither useful task state nor the belief
-state. Examples include a required submission marker, generic setup unrelated
-to the next decision, an empty command, or the first harmless confirmation of
-an already-established fact that reveals nothing new.
+state. This includes one harmless confirmation of an already-known fact and a
+required submission marker.
 
-R (REGRESSION): Causes a setback, damages or undoes useful state, implements a
-wrong change, pursues a disproven direction, or redundantly repeats a completed
-or failed action after the harmless-repeat allowance is exhausted.
+R (REGRESSION): Damages or undoes useful state, makes a wrong change, follows a
+disproven direction, or keeps repeating a completed/failed action without new
+information.
 
-STATEFUL CALIBRATION RULES
-- Judge local causal role using the supplied window. The final verifier reward
-  is intentionally omitted.
-- First relevant inspection of a file/state is E. Re-viewing the same unchanged
-  file once with no new purpose is N; the third and later equivalent views are
-  R.
-- The first passing targeted test attributable to a fix may be D. Re-running
-  the same already-passing test once without new information is N; later
-  equivalent reruns are R.
-- The first correct generation of a required artifact may be D. Regenerating
-  the same already-correct artifact once without a state improvement is N;
-  later equivalent regenerations are R.
-- After a fix is already established, rewriting the same fix without a new
-  requirement is R.
-- A first compile/test failure that reveals a new cause (for example, missing
-  stdio.h) is E. Repeating the same failure once without changing the
-  hypothesis is N; subsequent equivalent failures are R. A different diagnostic
-  that narrows the cause remains E.
-- A novel, necessary dependency repair is E until it succeeds. Repeating the
-  same failed install without new evidence is N once, then R; harmful package
-  changes or an already-disproven install path are R.
-- A command may contain several shell subcommands. Judge the complete tool call
-  and combined observation as one turn, based on its net new contribution.
-- Future progress does not retroactively make an earlier failed or redundant
-  turn D.
-- Give one brief evidence string citing the tool call/observation or concrete
-  state delta, not the assistant's self-assessment.
+CALIBRATION RULES
+- D requires the first/new required state change or the first passing targeted
+  verification attributable to a fix. A candidate edit without evidence of
+  correctness is E; rewriting an already-established fix is R.
+- First relevant inspection or first failure revealing a new cause (for
+  example, missing stdio.h) is E. Re-viewing the same unchanged state or
+  reproducing the same failure once is N; further equivalent repeats are R.
+- First correct creation of a required artifact may be D. Regenerating the same
+  unchanged artifact once is N; further equivalent regenerations are R. Apply
+  the same N-then-R rule to an already-passing test.
+- A different diagnostic that narrows the cause remains E. A new necessary
+  dependency repair is E; repeating the same failed install is N then R, while
+  harmful package changes are immediately R.
+- Treat a compound tool call and its combined observation as one turn and judge
+  its net new contribution.
+- Future success does not retroactively make an earlier failed or redundant
+  turn D. The final verifier reward is intentionally omitted.
+- Output brief evidence grounded in the tool call, observation, or state delta,
+  never in the assistant's self-assessment.
 
 After reasoning, output one JSON object on the final line:
 {"labels":["D"|"E"|"N"|"R"],"evidence":["short grounded reason"]}

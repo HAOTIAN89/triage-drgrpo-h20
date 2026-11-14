@@ -1,25 +1,40 @@
-# TRIAGE + Dr.GRPO on 3×H20
+# TRIAGE + Dr.GRPO and DPPO on H20
 
-This branch trains Qwen3.5-4B on 800 TMax terminal tasks with Dr.GRPO and
-TRIAGE turn-level credit assignment. It uses two GPUs for the policy/rollout
-workers and one GPU for a thinking Qwen3-8B judge. W&B is always offline.
+This repository provides two Qwen3.5-4B training recipes on the same 800 TMax
+terminal tasks:
+
+- **TRIAGE + Dr.GRPO:** two policy/rollout GPUs plus one thinking Qwen3-8B
+  judge GPU.
+- **DPPO:** two colocated policy/rollout GPUs; no judge model.
+
+W&B is always offline.
 
 Dataset: https://huggingface.co/datasets/haowu89/tmax-rl-800
 
-## GPU layout
+## GPU layouts
+
+### TRIAGE + Dr.GRPO
 
 | GPU | Work |
 | --- | --- |
 | H20 0–1 | FSDP policy training and colocated vLLM rollouts |
 | H20 2 | Qwen3-8B TRIAGE judge, thinking enabled |
 
-Training uses 8 prompts × 8 rollouts = 64 trajectories per step, 100 steps,
-and checkpoints every 10 steps. `TRIAGE_LAMBDA` defaults to `0.1`.
+### DPPO
+
+| GPU | Work |
+| --- | --- |
+| H20 0–1 | FSDP DPPO policy training and colocated vLLM rollouts |
+
+Both recipes use 8 prompts × 8 rollouts = 64 trajectories per global update,
+100 steps, and checkpoints every 10 steps. `TRIAGE_LAMBDA` defaults to `0.1`
+for the TRIAGE recipe.
 
 ## Install
 
-Requirements: Linux, 3 visible H20 GPUs, a recent NVIDIA driver, at least
-500 GiB free disk, and rootless Podman (preferred) or Apptainer with fakeroot.
+Requirements: Linux, at least 2 visible H20 GPUs for DPPO or 3 for TRIAGE,
+a recent NVIDIA driver, at least 500 GiB free disk, and rootless Podman
+(preferred) or Apptainer with fakeroot.
 
 ```bash
 git clone https://github.com/HAOTIAN89/triage-drgrpo-h20
@@ -70,7 +85,8 @@ Run these before full training:
 source .venv/bin/activate
 
 # Reports GPUs, CPU/RAM/disk, runtime health, and a suggested concurrency.
-python tmax_rl/scripts/check_host.py
+python tmax_rl/scripts/check_host.py --min-gpus 3  # TRIAGE + Dr.GRPO
+python tmax_rl/scripts/check_host.py --min-gpus 2  # DPPO
 
 # Test image pull, isolation, persistence, concurrency, and cleanup.
 python tmax_rl/scripts/smoke_sandbox.py --runtime auto --concurrency 2
@@ -79,19 +95,27 @@ python tmax_rl/scripts/smoke_sandbox.py --runtime auto --concurrency 8
 # TRIAGE parser, judge retry/fallback, and advantage tests.
 python tmax_rl/test_triage.py
 
-# One real optimizer step: 1 prompt × 2 rollouts + judge.
+# TRIAGE + Dr.GRPO: one real optimizer step with the judge.
 bash tmax_rl/scripts/smoke_training.sh
+
+# DPPO: one real optimizer step without a judge.
+bash tmax_rl/scripts/smoke_dppo.sh
 ```
 
 The end-to-end smoke is successful only if:
 
 - one optimizer step completes;
-- `outputs/smoke/triage/role_audit.jsonl` is non-empty;
 - both trajectories receive verifier rewards;
-- the judge has no OOM and its failure ratio is below 5%;
 - all test containers/instances are removed.
 
+For the TRIAGE smoke, additionally require:
+
+- `outputs/smoke/triage/role_audit.jsonl` is non-empty;
+- the judge has no OOM and its failure ratio is below 5%.
+
 ## Full run
+
+### TRIAGE + Dr.GRPO
 
 ```bash
 source .venv/bin/activate
@@ -117,25 +141,43 @@ bash tmax_rl/scripts/launch_h20.sh
 `OBSERVATION` is always included for the current turn and every available
 turn in the ±5 local window.
 
+### DPPO
+
+```bash
+source .venv/bin/activate
+mkdir -p run-logs/dppo-qwen35-4b-800
+nohup bash tmax_rl/scripts/launch_dppo_h20.sh \
+  > run-logs/dppo-qwen35-4b-800/launcher.log 2>&1 &
+```
+
+DPPO uses the same data, batch geometry, context limits, sandbox settings,
+checkpoint cadence, and two-GPU actor/rollout colocation as Dr.GRPO. Its
+algorithm-specific loss mode, aggregation and clipping are selected by the
+shared `dppo` launcher.
+
+Do not launch both recipes on the same policy GPUs at the same time.
+
 Outputs:
 
-- Full checkpoints: `outputs/triage-drgrpo-qwen35-4b-800/global_step_*`
-- HF snapshots: `outputs/triage-drgrpo-qwen35-4b-800-hf-snapshots`
-- Judge audit/cache: `outputs/triage-drgrpo-qwen35-4b-800/triage`
+- TRIAGE full checkpoints: `outputs/triage-drgrpo-qwen35-4b-800/global_step_*`
+- TRIAGE HF snapshots: `outputs/triage-drgrpo-qwen35-4b-800-hf-snapshots`
+- TRIAGE judge audit/cache: `outputs/triage-drgrpo-qwen35-4b-800/triage`
+- DPPO full checkpoints: `outputs/dppo-qwen35-4b-800/global_step_*`
+- DPPO HF snapshots: `outputs/dppo-qwen35-4b-800-hf-snapshots`
 - Offline W&B files: `wandb/offline-run-*`
 
 The latest two full optimizer checkpoints are retained. Earlier HF snapshots
 are archived before rotation; the final checkpoint keeps its HF model inside
 the full checkpoint.
 
-## Expected runtime
+## Expected runtimes
 
-On 3×H20 with 16 healthy local sandboxes:
+With 16 healthy local sandboxes:
 
 - sandbox smoke: 5–30 minutes on the first image pull;
-- one end-to-end smoke step: about 25–60 minutes;
-- one full training step: about 25–45 minutes;
-- 100 steps: roughly 45–75 hours (2–3 days).
+- DPPO on 2×H20: roughly 15–30 minutes per step and 28–50 hours total;
+- TRIAGE + Dr.GRPO on 3×H20: roughly 25–45 minutes per step and 45–75 hours
+  total.
 
 Checkpoint steps can add 10–20 minutes. Use the first five full steps to replace
 this estimate with the measured mean and p90.

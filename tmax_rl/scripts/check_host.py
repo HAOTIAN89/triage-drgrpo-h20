@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
 import subprocess
 from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--min-gpus",
+    type=int,
+    default=2,
+    help="Required visible GPUs: 2 for DPPO, 3 for TRIAGE + Dr.GRPO.",
+)
+args = parser.parse_args()
 
 
 def run(*args: str) -> tuple[int, str]:
@@ -67,8 +77,8 @@ report = {
 }
 print(json.dumps(report, indent=2))
 
-if len(gpus) < 3:
-    raise SystemExit("Need at least three visible GPUs.")
+if len(gpus) < args.min_gpus:
+    raise SystemExit(f"Need at least {args.min_gpus} visible GPUs.")
 if runtime is None or not runtime_ok:
     raise SystemExit("Install and configure rootless Podman or Apptainer.")
 if disk.free < 500 * 1024**3:
