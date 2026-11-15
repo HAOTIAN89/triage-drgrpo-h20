@@ -238,7 +238,7 @@ def build_judge_prompt(
     future_steps: int = 5,
     action_char_limit: int = 4_000,
     observation_char_limit: int = 4_000,
-    include_reasoning: bool = True,
+    include_reasoning: bool = False,
 ) -> str:
     left = max(0, target_index - previous_steps)
     right = min(len(segments), target_index + future_steps + 1)
@@ -291,7 +291,7 @@ class TriageRoleJudge:
         self.previous_steps = int(config.get("previous_steps", 5))
         self.future_steps = int(config.get("future_steps", 5))
         self.include_reasoning = _parse_bool(
-            config.get("include_reasoning", True)
+            config.get("include_reasoning", False)
         )
         self.retries = int(config.get("retries", 2))
         self.max_judge_failure_ratio = float(config.get("max_judge_failure_ratio", 0.05))

@@ -135,11 +135,11 @@ TMAX_SANDBOX_CONCURRENCY=2 \
 bash tmax_rl/scripts/launch_h20.sh
 ```
 
-`TRIAGE_INCLUDE_REASONING=true` preserves the complete assistant turn
-(reasoning + tool call) and is the baseline-compatible default. Set it to
-`false` to send only the tool call as `ACTION`. The immediate tool
-`OBSERVATION` is always included for the current turn and every available
-turn in the ±5 local window.
+The default, `TRIAGE_INCLUDE_REASONING=false`, sends only the tool call as
+`ACTION` (the best-performing audit setting, Case 3). Set it to `true` to
+preserve the complete assistant turn (reasoning + tool call). The immediate
+tool `OBSERVATION` is always included for the current turn and every
+available turn in the ±5 local window.
 
 ### DPPO
 

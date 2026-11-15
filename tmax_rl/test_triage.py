@@ -65,6 +65,23 @@ def test_reasoning_is_configurable_and_observation_is_preserved():
     assert "I already fixed everything" in with_reasoning
     assert "1 failed, 9 passed" in with_reasoning
 
+    default_prompt = build_judge_prompt(
+        task="Fix the failing test",
+        segments=[segment],
+        target_index=0,
+    )
+    assert "I already fixed everything" not in default_prompt
+    assert "pytest -q" in default_prompt
+
+    default_judge = TriageRoleJudge({}, DummyTokenizer())
+    default_requests, default_fallback = default_judge.build_requests(
+        raw_prompts=[[{"role": "user", "content": "Fix the failing test"}]],
+        trajectory_segments=[[segment]],
+    )
+    assert default_fallback == []
+    assert "I already fixed everything" not in default_requests[0].prompt
+    assert "pytest -q" in default_requests[0].prompt
+
     judge = TriageRoleJudge(
         {"include_reasoning": "false"},
         DummyTokenizer(),
@@ -83,7 +100,7 @@ def test_terminal_calibration_rules_are_explicit():
     assert "already-passing test" in JUDGE_SYSTEM_PROMPT
     assert "Regenerating" in JUDGE_SYSTEM_PROMPT
     assert "stdio.h" in JUDGE_SYSTEM_PROMPT
-    assert "reasoning as untrusted intent" in JUDGE_SYSTEM_PROMPT
+    assert "reasoning is untrusted intent" in JUDGE_SYSTEM_PROMPT
 
 
 def test_advantage_broadcast_and_observation_mask():
