@@ -5,7 +5,7 @@ terminal tasks:
 
 - **TRIAGE + Dr.GRPO:** two policy/rollout GPUs plus one thinking Qwen3-8B
   judge GPU.
-- **DPPO:** two colocated policy/rollout GPUs; no judge model.
+- **DPPO:** four colocated policy/rollout GPUs; no judge model.
 
 W&B is always offline.
 
@@ -24,7 +24,7 @@ Dataset: https://huggingface.co/datasets/haowu89/tmax-rl-800
 
 | GPU | Work |
 | --- | --- |
-| H20 0–1 | FSDP DPPO policy training and colocated vLLM rollouts |
+| H20 0–3 | FSDP DPPO policy training and colocated vLLM rollouts |
 
 Both recipes use 8 prompts × 8 rollouts = 64 trajectories per global update,
 100 steps, and checkpoints every 10 steps. `TRIAGE_LAMBDA` defaults to `0.1`
@@ -32,7 +32,7 @@ for the TRIAGE recipe.
 
 ## Install
 
-Requirements: Linux, at least 2 visible H20 GPUs for DPPO or 3 for TRIAGE,
+Requirements: Linux, at least 4 visible H20 GPUs for DPPO or 3 for TRIAGE,
 a recent NVIDIA driver, at least 500 GiB free disk, and rootless Podman
 (preferred) or Apptainer with fakeroot.
 
@@ -86,7 +86,7 @@ source .venv/bin/activate
 
 # Reports GPUs, CPU/RAM/disk, runtime health, and a suggested concurrency.
 python tmax_rl/scripts/check_host.py --min-gpus 3  # TRIAGE + Dr.GRPO
-python tmax_rl/scripts/check_host.py --min-gpus 2  # DPPO
+python tmax_rl/scripts/check_host.py --min-gpus 4  # DPPO
 
 # Test image pull, isolation, persistence, concurrency, and cleanup.
 python tmax_rl/scripts/smoke_sandbox.py --runtime auto --concurrency 2
@@ -150,9 +150,10 @@ nohup bash tmax_rl/scripts/launch_dppo_h20.sh \
   > run-logs/dppo-qwen35-4b-800/launcher.log 2>&1 &
 ```
 
-DPPO uses the same data, batch geometry, context limits, sandbox settings,
-checkpoint cadence, and two-GPU actor/rollout colocation as Dr.GRPO. Its
-algorithm-specific loss mode, aggregation and clipping are selected by the
+DPPO uses the same data, 8 prompts × 8 rollouts = 64 trajectories per global
+update, context limits, sandbox settings, and checkpoint cadence as Dr.GRPO.
+Its policy training and colocated rollouts are sharded across four H20 GPUs.
+Algorithm-specific loss mode, aggregation and clipping are selected by the
 shared `dppo` launcher.
 
 Do not launch both recipes on the same policy GPUs at the same time.
@@ -175,7 +176,7 @@ the full checkpoint.
 With 16 healthy local sandboxes:
 
 - sandbox smoke: 5–30 minutes on the first image pull;
-- DPPO on 2×H20: roughly 15–30 minutes per step and 28–50 hours total;
+- DPPO on 4×H20: roughly 10–25 minutes per step and 20–42 hours total;
 - TRIAGE + Dr.GRPO on 3×H20: roughly 25–45 minutes per step and 45–75 hours
   total.
 

@@ -5,7 +5,7 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=${ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}
 RUN=${RUN:-$ROOT/run-logs/dppo-qwen35-4b-800}
 TRAIN_SCRIPT=$ROOT/tmax_rl/scripts/run_dppo_h20.sh
-POLICY_GPUS=${POLICY_GPUS:-0,1}
+POLICY_GPUS=${POLICY_GPUS:-0,1,2,3}
 
 mkdir -p "$RUN"
 echo $$ > "$RUN/runner.pid"

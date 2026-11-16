@@ -12,8 +12,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--min-gpus",
     type=int,
-    default=2,
-    help="Required visible GPUs: 2 for DPPO, 3 for TRIAGE + Dr.GRPO.",
+    default=4,
+    help="Required visible GPUs: 4 for DPPO, 3 for TRIAGE + Dr.GRPO.",
 )
 args = parser.parse_args()
 

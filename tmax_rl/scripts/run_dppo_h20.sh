@@ -4,8 +4,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=${ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}
 
-export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1}
-export NGPUS=2
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3}
+export NGPUS=${NGPUS:-4}
 export MODEL_PATH=${MODEL_PATH:-$ROOT/models/Qwen3.5-4B}
 export DATA_DIR=${DATA_DIR:-$ROOT/data/tmax-rl-800}
 export TMAX_TASK_DATA_ARCHIVE=${TMAX_TASK_DATA_ARCHIVE:-$DATA_DIR/task-data.tar.gz}
